@@ -2,10 +2,19 @@ import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+import os
+import json
 
 # --- Google Sheets Setup ---
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+
+# --- Чтение из секрета Streamlit ---
+GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+if not GOOGLE_SERVICE_ACCOUNT_JSON:
+    st.error("Google Service Account JSON не найден в переменных окружения!")
+    st.stop()
+service_account_info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+creds = ServiceAccountCredentials.from_json_keyfile_dict(service_account_info, scope)
 client = gspread.authorize(creds)
 
 # ==== HELPERS ====
@@ -160,7 +169,7 @@ def page_check():
         with col3:
             if st.button("✏️ Змінити картку клієнта"):
                 st.session_state.found_client = False
-                go_to("edit_client")  # <--- добавляем переход на страницу редактирования!
+                go_to("edit_client")
         with col4:
             if st.button("⬅️ До пошуку"):
                 st.session_state.found_client = False
@@ -196,7 +205,7 @@ def page_create():
             1
         ]
         append_client(values)
-        load_clients.clear()  # <--- Сброс кэша после добавления!
+        load_clients.clear()  # Сброс кэша после добавления!
         st.success(f"Клієнта додано з ID: {actual_id}")
         # Сохраняем id и имя клиента
         st.session_state.client_id = actual_id

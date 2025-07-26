@@ -133,9 +133,7 @@ def update_order_in_sheet(order_id, updates: dict):
     records = sheet.get_all_records()
     for i, row in enumerate(records):
         if str(row.get("ID заказа")) == str(order_id):
-            # Считаем сдвиг относительно шапки (i+2)
             row_number = i + 2
-            # Для примера: редактируем только сумму, тип оплаты и дату
             if "Сумма (грн)" in updates:
                 sheet.update(f"W{row_number}", [[updates["Сумма (грн)"]]])
             if "Тип оплати" in updates:
@@ -273,12 +271,19 @@ def page_orders():
     if not client_id:
         client_id = st.session_state.get("client_id") or st.session_state.get("selected_client_id")
     client_orders = [o for o in orders if str(o.get("ID клиента")) == str(client_id)]
-    if not client_orders:
+    # --- Берём только уникальные заказы по ID заказа ---
+    unique_orders = {}
+    for o in client_orders:
+        order_id = o.get("ID заказа")
+        if order_id not in unique_orders:
+            unique_orders[order_id] = o
+    unique_orders_list = sorted(unique_orders.values(), key=lambda x: x.get('Дата заказа', ''), reverse=True)
+    if not unique_orders_list:
         st.info("У клієнта ще немає замовлень.")
     else:
         order_display = [
             f"ID: {o['ID заказа']} | {o.get('Дата заказа','')} | {o.get('Сумма (грн)','0')} грн | {o.get('Тип оплати','')}"
-            for o in client_orders
+            for o in unique_orders_list
         ]
         selected = st.selectbox("Виберіть замовлення:", order_display, key="select_order")
         if st.button("Відкрити замовлення"):
@@ -303,7 +308,6 @@ def page_edit_order():
             st.rerun()
         st.stop()
     st.markdown(f"### Замовлення ID: {order['ID заказа']}")
-    # Можно добавить больше полей!
     new_sum = st.text_input("Сума (грн)", value=str(order.get("Сумма (грн)", "")), key="edit_order_sum")
     new_pay = st.selectbox("Тип оплати", ["Без оплати", "Передплата", "Повна оплата"], 
         index=["Без оплати", "Передплата", "Повна оплата"].index(order.get("Тип оплати", "Без оплати")), key="edit_order_pay")
@@ -363,7 +367,7 @@ def page_edit_client():
         go_to("check")
 
 # ==== PAGE 6: Создание заказа ====
-# (Оставь твою page_order() без изменений! Она у тебя уже работает хорошо)
+# (Тут оставь свою page_order(), если она у тебя была. Она не изменяется этим обновлением.)
 
 # ==== Роутинг ====
 if st.session_state.page == "check":

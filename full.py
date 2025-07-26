@@ -5,6 +5,28 @@ from datetime import datetime
 import os
 import json
 
+# ====== ДОБАВЛЯЕМ КАСТОМНЫЙ CSS ======
+st.markdown(
+    """
+    <style>
+    /* Увеличиваем ширину инпутов и селектов */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div > div > div,
+    .stNumberInput input {
+        min-width: 500px !important;  /* Можно поставить 600-700, если хочется ещё шире */
+        max-width: 700px !important;
+    }
+    /* Центруем всю форму и контент */
+    .block-container {
+        max-width: 900px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # --- Google Sheets Setup ---
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 
@@ -57,16 +79,13 @@ def append_client(values):
 def update_client_in_sheet(client_id, values):
     sheet = client.open("База клиентов").worksheet("База клиентов")
     records = sheet.get_all_records()
-    # Найти строку по ID
     for i, row in enumerate(records):
         if str(row.get("ID")) == str(client_id):
-            # i+2 потому что get_all_records не возвращает шапку, а Google Sheets начинается с 1
             sheet.update(f"A{i+2}:J{i+2}", [values])
             break
 
 def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
     sheet = client.open("База клиентов").worksheet("База заказов")
-    # Проверка на шапку (если таблица пуста — добавить!)
     if not sheet.get_all_values():
         sheet.append_row([
             "ID заказа",
@@ -169,7 +188,7 @@ def page_check():
         with col3:
             if st.button("✏️ Змінити картку клієнта"):
                 st.session_state.found_client = False
-                go_to("edit_client")
+                go_to("edit_client")  # <--- добавляем переход на страницу редактирования!
         with col4:
             if st.button("⬅️ До пошуку"):
                 st.session_state.found_client = False
@@ -205,14 +224,12 @@ def page_create():
             1
         ]
         append_client(values)
-        load_clients.clear()  # Сброс кэша после добавления!
+        load_clients.clear()  # <--- Сброс кэша после добавления!
         st.success(f"Клієнта додано з ID: {actual_id}")
-        # Сохраняем id и имя клиента
         st.session_state.client_id = actual_id
         st.session_state.client_name = name
         st.session_state.just_added_client = True
 
-    # После успешного добавления показываем только 2 кнопки
     if st.session_state.get("just_added_client", False):
         col1, col2 = st.columns(2)
         with col1:
@@ -403,8 +420,8 @@ def page_order():
             order_id
         )
         st.session_state.order_rows = []
-        st.session_state.order_saved = order_id  # Ставим флаг!
-        st.rerun()  # Перезапускаем страницу
+        st.session_state.order_saved = order_id
+        st.rerun()
 
     if st.session_state.get("order_saved"):
         order_id = st.session_state.order_saved
@@ -412,11 +429,11 @@ def page_order():
         col1, col2 = st.columns(2)
         with col1:
             if st.button("⬅️ Повернутись до пошуку клієнтів"):
-                st.session_state.order_saved = None  # Сброс флага!
+                st.session_state.order_saved = None
                 go_to("check")
         with col2:
             if st.button("🛒 Створити ще одне замовлення для цього клієнта"):
-                st.session_state.order_saved = None  # Сброс флага!
+                st.session_state.order_saved = None
                 go_to("order")
         st.stop()
 
@@ -444,7 +461,7 @@ def page_edit_client():
         values = [
             client_id,
             phone,
-            "",  # Здесь можно добавить email или оставить пустым
+            "",
             name,
             surname,
             city,
@@ -454,7 +471,7 @@ def page_edit_client():
             1
         ]
         update_client_in_sheet(client_id, values)
-        load_clients.clear()  # Сбросить кэш после редактирования!
+        load_clients.clear()
         st.success("Картка клієнта успішно оновлена!")
         st.session_state.found_client = False
         go_to("check")

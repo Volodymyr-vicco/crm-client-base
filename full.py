@@ -5,10 +5,28 @@ from datetime import datetime
 import os
 import json
 
+# ====== ДОБАВЛЯЕМ КАСТОМНЫЙ CSS ======
+st.markdown(
+    """
+    <style>
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div > div > div,
+    .stNumberInput input {
+        min-width: 500px !important;  
+        max-width: 700px !important;
+    }
+    .block-container {
+        max-width: 900px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # --- Google Sheets Setup ---
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-
-# --- Чтение из секрета Streamlit ---
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
 if not GOOGLE_SERVICE_ACCOUNT_JSON:
     st.error("Google Service Account JSON не найден в переменных окружения!")
@@ -26,7 +44,7 @@ def get_next_id():
 
 def get_next_order_id():
     sheet = client.open("База клиентов").worksheet("База заказов")
-    values = sheet.col_values(1)[1:]  # Пропускаем шапку
+    values = sheet.col_values(1)[1:]
     id_numbers = [int(x) for x in values if x.isdigit()]
     return max(id_numbers) + 1 if id_numbers else 1
 
@@ -50,6 +68,11 @@ def load_colors():
     sheet = client.open("База клиентов").worksheet("Цветовая линейка")
     return sheet.get_all_records()
 
+@st.cache_data
+def load_orders():
+    sheet = client.open("База клиентов").worksheet("База заказов")
+    return sheet.get_all_records()
+
 def append_client(values):
     sheet = client.open("База клиентов").worksheet("База клиентов")
     sheet.append_row(values)
@@ -57,24 +80,25 @@ def append_client(values):
 def update_client_in_sheet(client_id, values):
     sheet = client.open("База клиентов").worksheet("База клиентов")
     records = sheet.get_all_records()
-    # Найти строку по ID
     for i, row in enumerate(records):
         if str(row.get("ID")) == str(client_id):
-            # i+2 потому что get_all_records не возвращает шапку, а Google Sheets начинается с 1
             sheet.update(f"A{i+2}:J{i+2}", [values])
             break
 
 def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
     sheet = client.open("База клиентов").worksheet("База заказов")
-    # Проверка на шапку (если таблица пуста — добавить!)
-    if not sheet.get_all_values():
-        sheet.append_row([
-            "ID заказа",
-            "ID клиента", "Имя", "Фамилия", "Телефон", "Город", "НП", "Доставка", "Комментарий",
-            "Валюта", "Тип оплаты", "Сумма предоплаты", "До сплати",
-            "Название модели", "Цвет", "Размер", "Ручной размер", "К-во в ростовке", "К-во ростовок",
-            "Общ. кол-во", "Цена/шт", "Скидка", "Сумма (грн)", "Дата заказа"
-        ])
+    header = sheet.row_values(1) if sheet.get_all_values() else []
+    if "Відмова клієнта" not in header:
+        if header:
+            sheet.update_cell(1, len(header)+1, "Відмова клієнта")
+        else:
+            sheet.append_row([
+                "ID заказа",
+                "ID клиента", "Имя", "Фамилия", "Телефон", "Город", "НП", "Доставка", "Комментарий",
+                "Валюта", "Тип оплаты", "Сумма предоплаты", "До сплати",
+                "Название модели", "Цвет", "Размер", "Ручной размер", "К-во в ростовке", "К-во ростовок",
+                "Общ. кол-во", "Цена/шт", "Скидка", "Сумма (грн)", "Дата заказа", "Відмова клієнта"
+            ])
     for row in order_rows:
         manual_size = ""
         size_value = row.get("size", "")
@@ -105,8 +129,49 @@ def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
             row.get("price", ""),
             row.get("discount", ""),
             row.get("total_sum", ""),
-            datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+            datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
+            "+" if row.get("rejected", False) else ""
         ])
+
+def update_order_rows_in_sheet(order_id, order_rows, common_fields):
+    """Обновить все строки заказа по ID заказа"""
+    sheet = client.open("База клиентов").worksheet("База заказов")
+    data = sheet.get_all_records()
+    header = sheet.row_values(1)
+    rows_to_update = []
+    for i, row in enumerate(data):
+        if str(row.get("ID заказа")) == str(order_id):
+            rows_to_update.append(i + 2)  # get_all_records без шапки, а GS с 1
+    for idx, upd_row_num in enumerate(rows_to_update):
+        if idx >= len(order_rows):
+            break
+        row_data = order_rows[idx]
+        sheet.update(f"C{upd_row_num}:Z{upd_row_num}", [[
+            common_fields["Имя"],
+            common_fields["Фамилия"],
+            common_fields["Телефон"],
+            common_fields["Город"],
+            common_fields["НП"],
+            common_fields["Доставка"],
+            common_fields["Комментарий"],
+            common_fields["Валюта"],
+            common_fields["Тип оплаты"],
+            common_fields["Сумма предоплаты"],
+            common_fields["До сплати"],
+            row_data.get("model", ""),
+            row_data.get("color", ""),
+            row_data.get("size", ""),
+            row_data.get("manual_size", ""),
+            row_data.get("v_rostovke", ""),
+            row_data.get("qty_rostovok", ""),
+            row_data.get("total_qty", ""),
+            row_data.get("price", ""),
+            row_data.get("discount", ""),
+            row_data.get("total_sum", ""),
+            row_data.get("date", ""),
+            "+" if row_data.get("rejected") else ""
+        ]])
+    load_orders.clear()
 
 # ==== Навигация ====
 if "page" not in st.session_state:
@@ -165,7 +230,9 @@ def page_check():
                 go_to("order")
         with col2:
             if st.button("🔎 Подивитися всі замовлення"):
-                st.info("Поки функція не реалізована")
+                st.session_state.page = "orders"
+                st.session_state.found_client = False
+                st.rerun()
         with col3:
             if st.button("✏️ Змінити картку клієнта"):
                 st.session_state.found_client = False
@@ -205,14 +272,12 @@ def page_create():
             1
         ]
         append_client(values)
-        load_clients.clear()  # Сброс кэша после добавления!
+        load_clients.clear()  # <--- Сброс кэша после добавления!
         st.success(f"Клієнта додано з ID: {actual_id}")
-        # Сохраняем id и имя клиента
         st.session_state.client_id = actual_id
         st.session_state.client_name = name
         st.session_state.just_added_client = True
 
-    # После успешного добавления показываем только 2 кнопки
     if st.session_state.get("just_added_client", False):
         col1, col2 = st.columns(2)
         with col1:
@@ -224,11 +289,10 @@ def page_create():
                 st.session_state.just_added_client = False
                 go_to("check")
         st.stop()
-
     if st.button("⬅️ Назад до перевірки"):
         go_to("check")
 
-# ==== PAGE 3: Создание заказа ====
+# ==== PAGE 3: Создание заказа ====  (оставил твой!)
 def page_order():
     price_data = load_price()
     size_data = load_sizes()
@@ -397,14 +461,14 @@ def page_order():
             {
                 "Валюта": currency,
                 "Тип оплати": pay_type,
-                "Сумма предоплаты": prepay_amount,
+                "Сумма предоплати": prepay_amount,
                 "До сплати": to_pay
             },
             order_id
         )
         st.session_state.order_rows = []
-        st.session_state.order_saved = order_id  # Ставим флаг!
-        st.rerun()  # Перезапускаем страницу
+        st.session_state.order_saved = order_id
+        st.rerun()
 
     if st.session_state.get("order_saved"):
         order_id = st.session_state.order_saved
@@ -412,15 +476,156 @@ def page_order():
         col1, col2 = st.columns(2)
         with col1:
             if st.button("⬅️ Повернутись до пошуку клієнтів"):
-                st.session_state.order_saved = None  # Сброс флага!
+                st.session_state.order_saved = None
                 go_to("check")
         with col2:
             if st.button("🛒 Створити ще одне замовлення для цього клієнта"):
-                st.session_state.order_saved = None  # Сброс флага!
+                st.session_state.order_saved = None
                 go_to("order")
         st.stop()
 
-# ==== PAGE 4: Редактирование клиента ====
+# ==== PAGE 4: Список заказов клиента ====
+def page_orders():
+    st.markdown("<h2 style='text-align: center;'>Всі замовлення клієнта</h2>", unsafe_allow_html=True)
+    client_id = st.session_state.get("client_id")
+    orders = load_orders()
+    if not client_id:
+        client_id = st.session_state.get("client_id") or st.session_state.get("selected_client_id")
+    client_orders = [o for o in orders if str(o.get("ID клиента")) == str(client_id)]
+    unique_orders = {}
+    for o in client_orders:
+        order_id = o.get("ID заказа")
+        if order_id not in unique_orders:
+            unique_orders[order_id] = o
+    unique_orders_list = sorted(unique_orders.values(), key=lambda x: x.get('Дата заказа', ''), reverse=True)
+    if not unique_orders_list:
+        st.info("У клієнта ще немає замовлень.")
+    else:
+        order_display = [
+            f"ID: {o['ID заказа']} | {o.get('Дата заказа','')} | {o.get('Сумма (грн)','0')} грн | {o.get('Тип оплати','')}"
+            for o in unique_orders_list
+        ]
+        selected = st.selectbox("Виберіть замовлення:", order_display, key="select_order")
+        if st.button("Відкрити замовлення"):
+            order_id = selected.split('|')[0].replace("ID:", "").strip()
+            st.session_state.edit_order_id = order_id
+            st.session_state.page = "edit_order"
+            st.rerun()
+    if st.button("⬅️ Назад до клієнта"):
+        st.session_state.page = "check"
+        st.rerun()
+    st.stop()
+
+# ==== PAGE 5: Карточка заказа (редактирование) ====
+def page_edit_order():
+    orders = load_orders()
+    order_id = st.session_state.get("edit_order_id")
+    price_data = load_price()
+    size_data = load_sizes()
+    color_data = load_colors()
+
+    # Берём все строки этого заказа
+    order_rows = [o for o in orders if str(o.get("ID заказа")) == str(order_id)]
+    if not order_rows:
+        st.warning("Замовлення не знайдено.")
+        if st.button("⬅️ До замовлень"):
+            st.session_state.page = "orders"
+            st.rerun()
+        st.stop()
+
+    st.markdown(f"### Замовлення ID: {order_id}")
+    first_row = order_rows[0]
+
+    name = st.text_input("Ім'я", value=first_row.get("Имя", ""))
+    surname = st.text_input("Прізвище", value=first_row.get("Фамилия", ""))
+    phone = st.text_input("Телефон", value=first_row.get("Телефон", ""))
+    city = st.text_input("Місто", value=first_row.get("Город", ""))
+    np = st.text_input("НП", value=first_row.get("НП", ""))
+    delivery = st.text_input("Доставка", value=first_row.get("Доставка", ""))
+    comment = st.text_input("Коментар", value=first_row.get("Комментарий", ""))
+
+    st.markdown("---")
+    currency = st.selectbox("Валюта", ["ГРН", "USD"], index=0 if first_row.get("Валюта", "ГРН") == "ГРН" else 1)
+    pay_type = st.selectbox("Тип оплати", ["Без оплати", "Передплата", "Повна оплата"],
+        index=["Без оплати", "Передплата", "Повна оплата"].index(first_row.get("Тип оплаты", "Без оплати")))
+    prepay_amount = st.number_input("Сума предоплати", min_value=0.0, step=1.0, value=float(first_row.get("Сумма предоплаты", 0)))
+    to_pay = st.number_input("До сплати", min_value=0.0, step=1.0, value=float(first_row.get("До сплати", 0)))
+    st.markdown("---")
+
+    st.subheader("Позиції замовлення")
+    if "edit_order_rows" not in st.session_state:
+        st.session_state.edit_order_rows = []
+        for row in order_rows:
+            st.session_state.edit_order_rows.append({
+                "model": row.get("Название модели", ""),
+                "color": row.get("Цвет", ""),
+                "size": row.get("Размер", ""),
+                "manual_size": row.get("Ручной размер", ""),
+                "v_rostovke": int(row.get("К-во в ростовке", 1)),
+                "qty_rostovok": int(row.get("К-во ростовок", 1)),
+                "total_qty": int(row.get("Общ. кол-во", 1)),
+                "price": float(row.get("Цена/шт", 0)),
+                "discount": float(row.get("Скидка", 0)),
+                "total_sum": float(row.get("Сумма (грн)", 0)),
+                "rejected": (row.get("Відмова клієнта", "") == "+"),
+                "date": row.get("Дата заказа", "")
+            })
+
+    rows = st.session_state.edit_order_rows
+    remove_idx = None
+
+    for idx, row in enumerate(rows):
+        with st.expander(f"Товар #{idx+1}", expanded=True):
+            row["model"] = st.text_input(f"Модель {idx+1}", value=row["model"], key=f"edit_model_{order_id}_{idx}")
+            row["color"] = st.text_input(f"Колір {idx+1}", value=row["color"], key=f"edit_color_{order_id}_{idx}")
+            row["size"] = st.text_input(f"Розмір {idx+1}", value=row["size"], key=f"edit_size_{order_id}_{idx}")
+            row["manual_size"] = st.text_input(f"Ручний розмір {idx+1}", value=row["manual_size"], key=f"edit_manual_size_{order_id}_{idx}")
+            row["v_rostovke"] = st.number_input(f"К-во в ростовке {idx+1}", value=row["v_rostovke"], key=f"edit_v_rostovke_{order_id}_{idx}")
+            row["qty_rostovok"] = st.number_input(f"К-во ростовок {idx+1}", value=row["qty_rostovok"], key=f"edit_qty_rostovok_{order_id}_{idx}")
+            row["total_qty"] = st.number_input(f"Общ. кол-во {idx+1}", value=row["total_qty"], key=f"edit_total_qty_{order_id}_{idx}")
+            row["price"] = st.number_input(f"Цена/шт {idx+1}", value=row["price"], key=f"edit_price_{order_id}_{idx}")
+            row["discount"] = st.number_input(f"Скидка {idx+1}", value=row["discount"], key=f"edit_discount_{order_id}_{idx}")
+            row["total_sum"] = st.number_input(f"Сума (грн) {idx+1}", value=row["total_sum"], key=f"edit_total_sum_{order_id}_{idx}")
+            row["rejected"] = st.checkbox("Клієнт відмовився від цього товару", value=row["rejected"], key=f"edit_rejected_{order_id}_{idx}")
+            if len(rows) > 1:
+                if st.button("❌ Видалити цей товар", key=f"remove_{order_id}_{idx}"):
+                    remove_idx = idx
+
+    if remove_idx is not None:
+        rows.pop(remove_idx)
+        st.experimental_rerun()
+
+    st.markdown("---")
+    if st.button("Зберегти зміни"):
+        common_fields = {
+            "Имя": name,
+            "Фамилия": surname,
+            "Телефон": phone,
+            "Город": city,
+            "НП": np,
+            "Доставка": delivery,
+            "Комментарий": comment,
+            "Валюта": currency,
+            "Тип оплаты": pay_type,
+            "Сумма предоплаты": prepay_amount,
+            "До сплати": to_pay,
+        }
+        # Запишем дату если пусто
+        for row in rows:
+            if not row["date"]:
+                row["date"] = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+        update_order_rows_in_sheet(order_id, rows, common_fields)
+        st.success("Зміни збережено!")
+        st.session_state.pop("edit_order_rows")
+        st.stop()
+
+    if st.button("⬅️ Назад до всіх замовлень"):
+        st.session_state.page = "orders"
+        st.session_state.pop("edit_order_rows", None)
+        st.rerun()
+    st.stop()
+
+# ==== PAGE 6: Редактирование клиента ====
 def page_edit_client():
     clients = load_clients()
     client_id = st.session_state.get("client_id")
@@ -444,7 +649,7 @@ def page_edit_client():
         values = [
             client_id,
             phone,
-            "",  # Здесь можно добавить email или оставить пустым
+            "",
             name,
             surname,
             city,
@@ -454,7 +659,7 @@ def page_edit_client():
             1
         ]
         update_client_in_sheet(client_id, values)
-        load_clients.clear()  # Сбросить кэш после редактирования!
+        load_clients.clear()
         st.success("Картка клієнта успішно оновлена!")
         st.session_state.found_client = False
         go_to("check")
@@ -468,5 +673,9 @@ elif st.session_state.page == "create":
     page_create()
 elif st.session_state.page == "order":
     page_order()
+elif st.session_state.page == "orders":
+    page_orders()
+elif st.session_state.page == "edit_order":
+    page_edit_order()
 elif st.session_state.page == "edit_client":
     page_edit_client()

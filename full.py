@@ -37,48 +37,48 @@ client = gspread.authorize(creds)
 
 # ==== HELPERS ====
 def get_next_id():
-    sheet = client.open("База клиентов").worksheet("База клиентов")
+    sheet = client.open("База клиентов 2025 Львов/Киев").worksheet("База клиентов")
     id_list = sheet.col_values(1)[1:]
     id_list = [int(x) for x in id_list if x.isdigit()]
     return max(id_list) + 1 if id_list else 1
 
 def get_next_order_id():
-    sheet = client.open("База клиентов").worksheet("База заказов")
+    sheet = client.open("База клиентов 2025 Львов/Киев").worksheet("База заказов")
     values = sheet.col_values(1)[1:]
     id_numbers = [int(x) for x in values if x.isdigit()]
     return max(id_numbers) + 1 if id_numbers else 1
 
 @st.cache_data
 def load_clients():
-    sheet = client.open("База клиентов").worksheet("База клиентов")
+    sheet = client.open("База клиентов 2025 Львов/Киев").worksheet("База клиентов")
     return sheet.get_all_records()
 
 @st.cache_data
 def load_price():
-    sheet = client.open("База клиентов").worksheet("Прайс")
+    sheet = client.open("База клиентов 2025 Львов/Киев").worksheet("Прайс")
     return sheet.get_all_records()
 
 @st.cache_data
 def load_sizes():
-    sheet = client.open("База клиентов").worksheet("Размерный ряд")
+    sheet = client.open("База клиентов 2025 Львов/Киев").worksheet("Размерный ряд")
     return sheet.get_all_records()
 
 @st.cache_data
 def load_colors():
-    sheet = client.open("База клиентов").worksheet("Цветовая линейка")
+    sheet = client.open("База клиентов 2025 Львов/Киев").worksheet("Цветовая линейка")
     return sheet.get_all_records()
 
 @st.cache_data
 def load_orders():
-    sheet = client.open("База клиентов").worksheet("База заказов")
+    sheet = client.open("База клиентов 2025 Львов/Киев").worksheet("База заказов")
     return sheet.get_all_records()
 
 def append_client(values):
-    sheet = client.open("База клиентов").worksheet("База клиентов")
+    sheet = client.open("База клиентов 2025 Львов/Киев").worksheet("База клиентов")
     sheet.append_row(values)
 
 def update_client_in_sheet(client_id, values):
-    sheet = client.open("База клиентов").worksheet("База клиентов")
+    sheet = client.open("База клиентов 2025 Львов/Киев").worksheet("База клиентов")
     records = sheet.get_all_records()
     for i, row in enumerate(records):
         if str(row.get("ID")) == str(client_id):
@@ -87,7 +87,7 @@ def update_client_in_sheet(client_id, values):
 
 def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
     try:
-        sheet = client.open("База клиентов").worksheet("База заказов")
+        sheet = client.open("База клиентов 2025 Львов/Киев").worksheet("База заказов")
         st.info(f"Пытаемся записать заказ в таблицу: {sheet.spreadsheet.url}")
         st.info(f"Имя листа: {sheet.title}")
         all_values = sheet.get_all_values()
@@ -143,7 +143,7 @@ def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
         st.error(f"Ошибка при сохранении заказа: {e}")
 
 def update_order_rows_in_sheet(order_id, order_rows, common_fields):
-    sheet = client.open("База клиентов").worksheet("База заказов")
+    sheet = client.open("База клиентов 2025 Львов/Киев").worksheet("База заказов")
     data = sheet.get_all_records()
     header = sheet.row_values(1)
     rows_to_update = []

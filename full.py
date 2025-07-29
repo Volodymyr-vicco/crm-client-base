@@ -292,7 +292,7 @@ def page_create():
     if st.button("⬅️ Назад до перевірки"):
         go_to("check")
 
-# ==== PAGE 3: Создание заказа ====  (оставил твой!)
+# ==== PAGE 3: Создание заказа ====
 def page_order():
     price_data = load_price()
     size_data = load_sizes()
@@ -333,14 +333,103 @@ def page_order():
         prepay_amount = st.number_input("Сума предоплати", min_value=0.0, step=1.0)
 
     st.markdown("---")
+    models = []
+    seen = set()
+    for row in price_data:
+        m = row.get("Модель")
+        if m and m not in seen:
+            models.append(m)
+            seen.add(m)
 
     if "order_rows" not in st.session_state:
         st.session_state.order_rows = []
 
     st.subheader("Додайте товар")
+    def add_row():
+        size_display = ""
+        v_rostovke = 1
+        for sd in size_data:
+            if sd["Модель"] == models[0]:
+                size_display = str(sd.get("Размеры ростовки", "")).strip()
+                try:
+                    v_rostovke = int(sd.get("В ростовке", 1))
+                except:
+                    v_rostovke = 1
+                break
+        st.session_state.order_rows.append({
+            "model": models[0],
+            "color": "",
+            "size": size_display,
+            "v_rostovke": v_rostovke,
+            "qty_rostovok": 1,
+            "total_qty": v_rostovke,
+            "price": 0.0,
+            "discount": 0.0,
+            "total_sum": 0.0
+        })
 
-    # Твой существующий код для добавления товаров и подсчета сумм остаётся без изменений
+    if st.button("➕ Додати товар"):
+        add_row()
 
+    for idx, row in enumerate(st.session_state.order_rows):
+        st.markdown(f"**Товар #{idx+1}**")
+        cols = st.columns(6)
+        row["model"] = cols[0].selectbox(
+            "Модель", models, index=models.index(row["model"]) if row["model"] in models else 0, key=f"model_{idx}"
+        )
+        color_choices = [r["Цвет"] for r in color_data if r["Модель"] == row["model"]]
+        row["color"] = cols[1].selectbox(
+            "Колір", color_choices + ["Ввести свій..."], index=color_choices.index(row["color"]) if row["color"] in color_choices else 0, key=f"color_{idx}"
+        )
+        if row["color"] == "Ввести свій...":
+            row["color"] = cols[1].text_input("Введіть свій колір:", key=f"custom_color_{idx}")
+
+        size_display = ""
+        v_rostovke_db = 1
+        for sd in size_data:
+            if sd["Модель"] == row["model"]:
+                size_display = str(sd.get("Размеры ростовки", "")).strip()
+                try:
+                    v_rostovke_db = int(sd.get("В ростовке", 1))
+                except:
+                    v_rostovke_db = 1
+                break
+        sizes_display = [size_display] if size_display else []
+        current_idx = sizes_display.index(row["size"]) if row["size"] in sizes_display else len(sizes_display)
+        row["size"] = cols[2].selectbox(
+            "Розмір", sizes_display + ["Ввести вручну..."], index=current_idx, key=f"size_{idx}"
+        )
+
+        if row["size"] == "Ввести вручну...":
+            row["size"] = cols[2].text_input("Введіть розмір:", key=f"custom_size_{idx}")
+            row["v_rostovke"] = cols[3].number_input("Кількість у рост.", value=row.get("v_rostovke", 1), min_value=1, step=1, key=f"v_rost_{idx}")
+        else:
+            row["v_rostovke"] = cols[3].number_input("Кількість у рост.", value=v_rostovke_db, min_value=1, step=1, key=f"v_rost_{idx}", disabled=True)
+
+        row["qty_rostovok"] = cols[4].number_input("Кількість ростовок", value=row.get("qty_rostovok", 1), min_value=1, step=1, key=f"qty_rost_{idx}")
+        row["total_qty"] = row["v_rostovke"] * row["qty_rostovok"]
+        cols[5].number_input("Загальна Кількість", value=row["total_qty"], min_value=1, step=1, key=f"total_qty_{idx}", disabled=True)
+
+        price_col, disc_col, sum_col = st.columns([2, 2, 3])
+        price = None
+        for pd in price_data:
+            if pd["Модель"] == row["model"]:
+                price = float(pd.get("Ц $/шт", 0)) if currency == "USD" else float(pd.get("Ц ГРН/шт", 0))
+                break
+        if price is not None:
+            row["price"] = price_col.number_input("Ціна/шт", value=price, min_value=0.0, step=0.01, key=f"price_{idx}", disabled=True)
+        else:
+            row["price"] = price_col.number_input("Ціна/шт", min_value=0.0, step=0.01, key=f"price_{idx}")
+
+        row["discount"] = disc_col.number_input("Знижка", value=row.get("discount", 0.0), min_value=0.0, step=1.0, key=f"discount_{idx}")
+        row["total_sum"] = row["total_qty"] * row["price"] - row["discount"]
+        sum_col.number_input("Загалом, грн", value=row["total_sum"], key=f"total_sum_{idx}", disabled=True)
+
+        if st.button(f"Видалити товар {idx+1}"):
+            st.session_state.order_rows.pop(idx)
+            st.rerun()
+
+    st.markdown("---")
     if st.session_state.order_rows:
         order_total = sum(row["total_sum"] for row in st.session_state.order_rows)
     else:
@@ -361,17 +450,17 @@ def page_order():
             st.session_state.order_rows,
             {
                 "ID": st.session_state.get("client_id"),
-                "Имя": name,
-                "Фамилия": surname,
-                "Телефон": phone,
-                "Город": city,
+                "Ім'я": name,
+                "Прізвище": surname,
+                "Номер телефону": phone,
+                "Місто": city,
                 "НП": np,
                 "Доставка": delivery,
-                "Комментарий": comment
+                "Коментар": comment
             },
             {
                 "Валюта": currency,
-                "Тип оплаты": pay_type,
+                "Тип оплати": pay_type,
                 "Сумма предоплаты": prepay_amount,
                 "До сплати": to_pay
             },
@@ -380,20 +469,6 @@ def page_order():
         st.session_state.order_rows = []
         st.session_state.order_saved = order_id
         st.rerun()
-
-    if st.session_state.get("order_saved"):
-        order_id = st.session_state.order_saved
-        st.success(f"Замовлення збережено! ID замовлення: {order_id}")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("⬅️ Повернутись до пошуку клієнтів"):
-                st.session_state.order_saved = None
-                go_to("check")
-        with col2:
-            if st.button("🛒 Створити ще одне замовлення для цього клієнта"):
-                st.session_state.order_saved = None
-                go_to("order")
-        st.stop()
 
 # ==== PAGE 4: Список заказов клиента ====
 def page_orders():

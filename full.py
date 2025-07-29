@@ -86,62 +86,70 @@ def update_client_in_sheet(client_id, values):
             break
 
 def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
-    sheet = client.open("База клиентов").worksheet("База заказов")
-    header = sheet.row_values(1) if sheet.get_all_values() else []
-    if "Відмова клієнта" not in header:
-        if header:
-            sheet.update_cell(1, len(header)+1, "Відмова клієнта")
-        else:
+    try:
+        sheet = client.open("База клиентов").worksheet("База заказов")
+        st.info(f"Пытаемся записать заказ в таблицу: {sheet.spreadsheet.url}")
+        st.info(f"Имя листа: {sheet.title}")
+        all_values = sheet.get_all_values()
+        st.info(f"Всего строк в листе: {len(all_values)}")
+        header = sheet.row_values(1) if all_values else []
+        if "Відмова клієнта" not in header:
+            if header:
+                sheet.update_cell(1, len(header)+1, "Відмова клієнта")
+            else:
+                sheet.append_row([
+                    "ID заказа",
+                    "ID клиента", "Имя", "Фамилия", "Телефон", "Город", "НП", "Доставка", "Комментарий",
+                    "Валюта", "Тип оплаты", "Сумма предоплаты", "До сплати",
+                    "Название модели", "Цвет", "Размер", "Ручной размер", "К-во в ростовке", "К-во ростовок",
+                    "Общ. кол-во", "Цена/шт", "Скидка", "Сумма (грн)", "Дата заказа", "Відмова клієнта"
+                ])
+        for row in order_rows:
+            manual_size = ""
+            size_value = row.get("size", "")
+            if "ввести" in str(row.get("size", "")).lower() or "ручн" in str(row.get("size", "")).lower():
+                manual_size = row.get("size", "")
+                size_value = ""
+            st.info(f"Добавляем заказ: {[order_id, client_info['ID'], client_info['Ім\'я'], client_info['Прізвище'], client_info['Номер телефону'], client_info['Місто'], client_info['НП'], client_info['Доставка'], client_info['Коментар'], payment_info['Валюта'], payment_info['Тип оплати'], payment_info['Сумма предоплаты'] if payment_info['Тип оплати'] == 'Передплата' else 0, payment_info['До сплати'], row.get('model', ''), row.get('color', ''), size_value, manual_size, row.get('v_rostovke', ''), row.get('qty_rostovok', ''), row.get('total_qty', ''), row.get('price', ''), row.get('discount', ''), row.get('total_sum', ''), datetime.now().strftime('%d.%m.%Y %H:%M:%S'), '+' if row.get('rejected', False) else '']}")
             sheet.append_row([
-                "ID заказа",
-                "ID клиента", "Имя", "Фамилия", "Телефон", "Город", "НП", "Доставка", "Комментарий",
-                "Валюта", "Тип оплаты", "Сумма предоплаты", "До сплати",
-                "Название модели", "Цвет", "Размер", "Ручной размер", "К-во в ростовке", "К-во ростовок",
-                "Общ. кол-во", "Цена/шт", "Скидка", "Сумма (грн)", "Дата заказа", "Відмова клієнта"
+                order_id,
+                client_info["ID"],
+                client_info["Ім'я"],
+                client_info["Прізвище"],
+                client_info["Номер телефону"],
+                client_info["Місто"],
+                client_info["НП"],
+                client_info["Доставка"],
+                client_info["Коментар"],
+                payment_info["Валюта"],
+                payment_info["Тип оплати"],
+                payment_info["Сумма предоплаты"] if payment_info["Тип оплати"] == "Передплата" else 0,
+                payment_info["До сплати"],
+                row.get("model", ""),
+                row.get("color", ""),
+                size_value,
+                manual_size,
+                row.get("v_rostovke", ""),
+                row.get("qty_rostovok", ""),
+                row.get("total_qty", ""),
+                row.get("price", ""),
+                row.get("discount", ""),
+                row.get("total_sum", ""),
+                datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
+                "+" if row.get("rejected", False) else ""
             ])
-    for row in order_rows:
-        manual_size = ""
-        size_value = row.get("size", "")
-        if "ввести" in str(row.get("size", "")).lower() or "ручн" in str(row.get("size", "")).lower():
-            manual_size = row.get("size", "")
-            size_value = ""
-        sheet.append_row([
-            order_id,
-            client_info["ID"],
-            client_info["Ім'я"],
-            client_info["Прізвище"],
-            client_info["Номер телефону"],
-            client_info["Місто"],
-            client_info["НП"],
-            client_info["Доставка"],
-            client_info["Коментар"],
-            payment_info["Валюта"],
-            payment_info["Тип оплати"],
-            payment_info["Сумма предоплаты"] if payment_info["Тип оплати"] == "Передплата" else 0,
-            payment_info["До сплати"],
-            row.get("model", ""),
-            row.get("color", ""),
-            size_value,
-            manual_size,
-            row.get("v_rostovke", ""),
-            row.get("qty_rostovok", ""),
-            row.get("total_qty", ""),
-            row.get("price", ""),
-            row.get("discount", ""),
-            row.get("total_sum", ""),
-            datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
-            "+" if row.get("rejected", False) else ""
-        ])
+        st.success("Заказ успешно добавлен в таблицу!")
+    except Exception as e:
+        st.error(f"Ошибка при сохранении заказа: {e}")
 
 def update_order_rows_in_sheet(order_id, order_rows, common_fields):
-    """Обновить все строки заказа по ID заказа"""
     sheet = client.open("База клиентов").worksheet("База заказов")
     data = sheet.get_all_records()
     header = sheet.row_values(1)
     rows_to_update = []
     for i, row in enumerate(data):
         if str(row.get("ID заказа")) == str(order_id):
-            rows_to_update.append(i + 2)  # get_all_records без шапки, а GS с 1
+            rows_to_update.append(i + 2)
     for idx, upd_row_num in enumerate(rows_to_update):
         if idx >= len(order_rows):
             break
@@ -272,7 +280,7 @@ def page_create():
             1
         ]
         append_client(values)
-        load_clients.clear()  # <--- Сброс кэша после добавления!
+        load_clients.clear()
         st.success(f"Клієнта додано з ID: {actual_id}")
         st.session_state.client_id = actual_id
         st.session_state.client_name = name
@@ -292,7 +300,7 @@ def page_create():
     if st.button("⬅️ Назад до перевірки"):
         go_to("check")
 
-# ==== PAGE 3: Создание заказа ====  (оставил твой!)
+# ==== PAGE 3: Создание заказа ==== (оставь как у тебя — только save_order_to_sheet обновлён!)
 def page_order():
     price_data = load_price()
     size_data = load_sizes()
@@ -524,7 +532,6 @@ def page_edit_order():
     size_data = load_sizes()
     color_data = load_colors()
 
-    # Берём все строки этого заказа
     order_rows = [o for o in orders if str(o.get("ID заказа")) == str(order_id)]
     if not order_rows:
         st.warning("Замовлення не знайдено.")
@@ -610,7 +617,6 @@ def page_edit_order():
             "Сумма предоплаты": prepay_amount,
             "До сплати": to_pay,
         }
-        # Запишем дату если пусто
         for row in rows:
             if not row["date"]:
                 row["date"] = datetime.now().strftime("%d.%m.%Y %H:%M:%S")

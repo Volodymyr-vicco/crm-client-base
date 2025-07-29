@@ -43,7 +43,7 @@ def get_next_id():
     return max(id_list) + 1 if id_list else 1
 
 def get_next_order_id():
-    sheet = client.open("База клиентов").worksheet("База заказов")
+    sheet = client.open("База заказов").worksheet("База заказов")
     values = sheet.col_values(1)[1:]
     id_numbers = [int(x) for x in values if x.isdigit()]
     return max(id_numbers) + 1 if id_numbers else 1
@@ -70,7 +70,7 @@ def load_colors():
 
 @st.cache_data
 def load_orders():
-    sheet = client.open("База клиентов").worksheet("База заказов")
+    sheet = client.open("База заказов").worksheet("База заказов")
     return sheet.get_all_records()
 
 def append_client(values):
@@ -87,7 +87,7 @@ def update_client_in_sheet(client_id, values):
 
 def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
     try:
-        sheet = client.open("База клиентов").worksheet("База заказов")
+        sheet = client.open("База заказов").worksheet("База заказов")
         st.info(f"Пытаемся записать заказ в таблицу: {sheet.spreadsheet.url}")
         st.info(f"Имя листа: {sheet.title}")
         all_values = sheet.get_all_values()
@@ -143,7 +143,7 @@ def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
         st.error(f"Ошибка при сохранении заказа: {e}")
 
 def update_order_rows_in_sheet(order_id, order_rows, common_fields):
-    sheet = client.open("База клиентов").worksheet("База заказов")
+    sheet = client.open("База заказов").worksheet("База заказов")
     data = sheet.get_all_records()
     header = sheet.row_values(1)
     rows_to_update = []

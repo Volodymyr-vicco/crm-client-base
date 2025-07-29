@@ -467,8 +467,22 @@ def page_order():
             order_id
         )
         st.session_state.order_rows = []
-        st.session_state.order_saved = order_id
-        st.rerun()
+        st.session_state.order_saved = order_id  # Ставим флаг!
+        st.rerun()  # Перезапускаем страницу
+
+    if st.session_state.get("order_saved"):
+        order_id = st.session_state.order_saved
+        st.success(f"Замовлення збережено! ID замовлення: {order_id}")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("⬅️ Повернутись до пошуку клієнтів"):
+                st.session_state.order_saved = None  # Сброс флага!
+                go_to("check")
+        with col2:
+            if st.button("🛒 Створити ще одне замовлення для цього клієнта"):
+                st.session_state.order_saved = None  # Сброс флага!
+                go_to("order")
+        st.stop()
 
 # ==== PAGE 4: Список заказов клиента ====
 def page_orders():

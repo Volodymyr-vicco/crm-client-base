@@ -306,50 +306,6 @@ def page_order():
             go_to("check")
         st.stop()
 
-    # --- Инициализация списка товаров ---
-    if "order_rows" not in st.session_state:
-        st.session_state.order_rows = []
-
-    # --- Добавить товар (вне формы) ---
-    if st.button("➕ Додати товар"):
-        models = []
-        seen = set()
-        for row in price_data:
-            m = row.get("Модель")
-            if m and m not in seen:
-                models.append(m)
-                seen.add(m)
-        size_display = ""
-        v_rostovke = 1
-        for sd in size_data:
-            if sd["Модель"] == models[0]:
-                size_display = str(sd.get("Размеры ростовки", "")).strip()
-                try:
-                    v_rostovke = int(sd.get("В ростовке", 1))
-                except:
-                    v_rostovke = 1
-                break
-        st.session_state.order_rows.append({
-            "model": models[0] if models else "",
-            "color": "",
-            "size": size_display,
-            "v_rostovke": v_rostovke,
-            "qty_rostovok": 1,
-            "total_qty": v_rostovke,
-            "price": 0.0,
-            "discount": 0.0,
-            "total_sum": 0.0
-        })
-        st.experimental_rerun()
-
-    # --- Удалить товар (вне формы) ---
-    for idx in range(len(st.session_state.order_rows)):
-        col = st.columns(1)[0]
-        if col.button(f"❌ Видалити товар {idx+1}", key=f"del_{idx}"):
-            st.session_state.order_rows.pop(idx)
-            st.experimental_rerun()
-
-    # --- ОСНОВНАЯ ФОРМА ---
     with st.form("save_order_form"):
         st.header("Створення замовлення")
         col1, col2, col3 = st.columns(3)
@@ -373,20 +329,53 @@ def page_order():
         st.markdown("---")
         currency = st.selectbox("Валюта", ["ГРН", "USD"])
         pay_type = st.selectbox("Тип оплати", ["Без оплати", "Передплата", "Повна оплата"])
-        prepay_amount = 0.0
+        prepay_amount = 0
         if pay_type == "Передплата":
-            prepay_amount = st.number_input("Сума предоплати", min_value=0.0, step=1.0, value=0.0)
+            prepay_amount = st.number_input("Сума предоплати", min_value=0.0, step=1.0)
         else:
             prepay_amount = 0.0
 
         st.markdown("---")
+        models = []
+        seen = set()
+        for row in price_data:
+            m = row.get("Модель")
+            if m and m not in seen:
+                models.append(m)
+                seen.add(m)
 
-        # --- Список товаров в заказе ---
-        price_map = {row["Модель"]: row for row in price_data}
+        if "order_rows" not in st.session_state:
+            st.session_state.order_rows = []
+
+        st.subheader("Додайте товар")
+        add_row = st.form_submit_button("➕ Додати товар")
+        if add_row:
+            size_display = ""
+            v_rostovke = 1
+            for sd in size_data:
+                if sd["Модель"] == models[0]:
+                    size_display = str(sd.get("Размеры ростовки", "")).strip()
+                    try:
+                        v_rostovke = int(sd.get("В ростовке", 1))
+                    except:
+                        v_rostovke = 1
+                    break
+            st.session_state.order_rows.append({
+                "model": models[0],
+                "color": "",
+                "size": size_display,
+                "v_rostovke": v_rostovke,
+                "qty_rostovok": 1,
+                "total_qty": v_rostovke,
+                "price": 0.0,
+                "discount": 0.0,
+                "total_sum": 0.0
+            })
+            st.experimental_rerun()  # чтобы обновить страницу после добавления
+
         for idx, row in enumerate(st.session_state.order_rows):
             st.markdown(f"**Товар #{idx+1}**")
             cols = st.columns(6)
-            models = [r["Модель"] for r in price_data]
             row["model"] = cols[0].selectbox(
                 "Модель", models, index=models.index(row["model"]) if row["model"] in models else 0, key=f"model_{idx}"
             )
@@ -412,6 +401,7 @@ def page_order():
             row["size"] = cols[2].selectbox(
                 "Розмір", sizes_display + ["Ввести вручну..."], index=current_idx, key=f"size_{idx}"
             )
+
             if row["size"] == "Ввести вручну...":
                 row["size"] = cols[2].text_input("Введіть розмір:", key=f"custom_size_{idx}")
                 row["v_rostovke"] = cols[3].number_input("Кількість у рост.", value=row.get("v_rostovke", 1), min_value=1, step=1, key=f"v_rost_{idx}")
@@ -424,8 +414,10 @@ def page_order():
 
             price_col, disc_col, sum_col = st.columns([2, 2, 3])
             price = None
-            if row["model"] in price_map:
-                price = float(price_map[row["model"]].get("Ц $/шт", 0)) if currency == "USD" else float(price_map[row["model"]].get("Ц ГРН/шт", 0))
+            for pd in price_data:
+                if pd["Модель"] == row["model"]:
+                    price = float(pd.get("Ц $/шт", 0)) if currency == "USD" else float(pd.get("Ц ГРН/шт", 0))
+                    break
             if price is not None:
                 row["price"] = price_col.number_input("Ціна/шт", value=price, min_value=0.0, step=0.01, key=f"price_{idx}", disabled=True)
             else:
@@ -435,18 +427,22 @@ def page_order():
             row["total_sum"] = row["total_qty"] * row["price"] - row["discount"]
             sum_col.number_input("Загалом, грн", value=row["total_sum"], key=f"total_sum_{idx}", disabled=True)
 
+            if st.form_submit_button(f"Видалити товар {idx+1}"):
+                st.session_state.order_rows.pop(idx)
+                st.experimental_rerun()
+
         st.markdown("---")
         if st.session_state.order_rows:
             order_total = sum(row["total_sum"] for row in st.session_state.order_rows)
         else:
-            order_total = 0.0
+            order_total = 0
 
         if pay_type == "Без оплати":
             to_pay = order_total
         elif pay_type == "Передплата":
             to_pay = order_total - prepay_amount
         else:
-            to_pay = 0.0
+            to_pay = 0
 
         st.info(f"**До сплати:** {to_pay:.2f} {currency}")
 
@@ -468,8 +464,8 @@ def page_order():
                 {
                     "Валюта": currency,
                     "Тип оплати": pay_type,
-                    "Сумма предоплати": float(prepay_amount),
-                    "До сплати": float(to_pay)
+                    "Сумма предоплати": prepay_amount,
+                    "До сплати": to_pay
                 },
                 order_id
             )

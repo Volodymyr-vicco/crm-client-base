@@ -95,7 +95,7 @@ def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
             sheet.append_row([
                 "ID заказа",
                 "ID клиента", "Имя", "Фамилия", "Телефон", "Город", "НП", "Доставка", "Комментарий",
-                "Валюта", "Тип оплати", "Сумма предоплаты", "До сплати",
+                "Валюта", "Тип оплаты", "Сумма предоплаты", "До сплати",
                 "Название модели", "Цвет", "Размер", "Ручной размер", "К-во в ростовке", "К-во ростовок",
                 "Общ. кол-во", "Цена/шт", "Скидка", "Сумма (грн)", "Дата заказа", "Відмова клієнта"
             ])
@@ -117,7 +117,7 @@ def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
             client_info["Коментар"],
             payment_info["Валюта"],
             payment_info["Тип оплати"],
-            payment_info["Сумма предоплаты"] if payment_info["Тип оплати"] == "Передплата" else 0,
+            payment_info.get("Сумма предоплаты", 0) if payment_info.get("Тип оплати") == "Передплата" else 0,
             payment_info["До сплати"],
             row.get("model", ""),
             row.get("color", ""),
@@ -155,7 +155,7 @@ def update_order_rows_in_sheet(order_id, order_rows, common_fields):
             common_fields["Доставка"],
             common_fields["Комментарий"],
             common_fields["Валюта"],
-            common_fields["Тип оплати"],
+            common_fields["Тип оплаты"],
             common_fields["Сумма предоплаты"],
             common_fields["До сплати"],
             row_data.get("model", ""),
@@ -306,46 +306,19 @@ def page_order():
             go_to("check")
         st.stop()
 
-    st.header("Створення замовлення")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        name = st.text_input("Ім'я", value=client_info.get("Имя", ""))
-    with col2:
-        surname = st.text_input("Прізвище", value=client_info.get("Фамилия", ""))
-    with col3:
-        phone = st.text_input("Номер телефону", value=client_info.get("Номер", ""))
-
-    col4, col5, col6 = st.columns(3)
-    with col4:
-        city = st.text_input("Місто", value=client_info.get("Город", ""))
-    with col5:
-        np = st.text_input("НП (Нова Пошта)", value=client_info.get("НП", ""))
-    with col6:
-        delivery = st.text_input("Доставка", value=client_info.get("Доставка", ""))
-
-    comment = st.text_input("Коментар (Ім’я отримувача)", value=client_info.get("Комент", ""))
-
-    st.markdown("---")
-    currency = st.selectbox("Валюта", ["ГРН", "USD"])
-    pay_type = st.selectbox("Тип оплати", ["Без оплати", "Передплата", "Повна оплата"])
-    prepay_amount = 0
-    if pay_type == "Передплата":
-        prepay_amount = st.number_input("Сума предоплати", min_value=0.0, step=1.0)
-
-    st.markdown("---")
-    models = []
-    seen = set()
-    for row in price_data:
-        m = row.get("Модель")
-        if m and m not in seen:
-            models.append(m)
-            seen.add(m)
-
+    # --- Инициализация списка товаров ---
     if "order_rows" not in st.session_state:
         st.session_state.order_rows = []
 
-    st.subheader("Додайте товар")
-    def add_row():
+    # --- Добавить товар (вне формы) ---
+    if st.button("➕ Додати товар"):
+        models = []
+        seen = set()
+        for row in price_data:
+            m = row.get("Модель")
+            if m and m not in seen:
+                models.append(m)
+                seen.add(m)
         size_display = ""
         v_rostovke = 1
         for sd in size_data:
@@ -357,7 +330,7 @@ def page_order():
                     v_rostovke = 1
                 break
         st.session_state.order_rows.append({
-            "model": models[0],
+            "model": models[0] if models else "",
             "color": "",
             "size": size_display,
             "v_rostovke": v_rostovke,
@@ -367,108 +340,142 @@ def page_order():
             "discount": 0.0,
             "total_sum": 0.0
         })
+        st.experimental_rerun()
 
-    if st.button("➕ Додати товар"):
-        add_row()
-
-    for idx, row in enumerate(st.session_state.order_rows):
-        st.markdown(f"**Товар #{idx+1}**")
-        cols = st.columns(6)
-        row["model"] = cols[0].selectbox(
-            "Модель", models, index=models.index(row["model"]) if row["model"] in models else 0, key=f"model_{idx}"
-        )
-        color_choices = [r["Цвет"] for r in color_data if r["Модель"] == row["model"]]
-        row["color"] = cols[1].selectbox(
-            "Колір", color_choices + ["Ввести свій..."], index=color_choices.index(row["color"]) if row["color"] in color_choices else 0, key=f"color_{idx}"
-        )
-        if row["color"] == "Ввести свій...":
-            row["color"] = cols[1].text_input("Введіть свій колір:", key=f"custom_color_{idx}")
-
-        size_display = ""
-        v_rostovke_db = 1
-        for sd in size_data:
-            if sd["Модель"] == row["model"]:
-                size_display = str(sd.get("Размеры ростовки", "")).strip()
-                try:
-                    v_rostovke_db = int(sd.get("В ростовке", 1))
-                except:
-                    v_rostovke_db = 1
-                break
-        sizes_display = [size_display] if size_display else []
-        current_idx = sizes_display.index(row["size"]) if row["size"] in sizes_display else len(sizes_display)
-        row["size"] = cols[2].selectbox(
-            "Розмір", sizes_display + ["Ввести вручну..."], index=current_idx, key=f"size_{idx}"
-        )
-
-        if row["size"] == "Ввести вручну...":
-            row["size"] = cols[2].text_input("Введіть розмір:", key=f"custom_size_{idx}")
-            row["v_rostovke"] = cols[3].number_input("Кількість у рост.", value=row.get("v_rostovke", 1), min_value=1, step=1, key=f"v_rost_{idx}")
-        else:
-            row["v_rostovke"] = cols[3].number_input("Кількість у рост.", value=v_rostovke_db, min_value=1, step=1, key=f"v_rost_{idx}", disabled=True)
-
-        row["qty_rostovok"] = cols[4].number_input("Кількість ростовок", value=row.get("qty_rostovok", 1), min_value=1, step=1, key=f"qty_rost_{idx}")
-        row["total_qty"] = row["v_rostovke"] * row["qty_rostovok"]
-        cols[5].number_input("Загальна Кількість", value=row["total_qty"], min_value=1, step=1, key=f"total_qty_{idx}", disabled=True)
-
-        price_col, disc_col, sum_col = st.columns([2, 2, 3])
-        price = None
-        for pd in price_data:
-            if pd["Модель"] == row["model"]:
-                price = float(pd.get("Ц $/шт", 0)) if currency == "USD" else float(pd.get("Ц ГРН/шт", 0))
-                break
-        if price is not None:
-            row["price"] = price_col.number_input("Ціна/шт", value=price, min_value=0.0, step=0.01, key=f"price_{idx}", disabled=True)
-        else:
-            row["price"] = price_col.number_input("Ціна/шт", min_value=0.0, step=0.01, key=f"price_{idx}")
-
-        row["discount"] = disc_col.number_input("Знижка", value=row.get("discount", 0.0), min_value=0.0, step=1.0, key=f"discount_{idx}")
-        row["total_sum"] = row["total_qty"] * row["price"] - row["discount"]
-        sum_col.number_input("Загалом, грн", value=row["total_sum"], key=f"total_sum_{idx}", disabled=True)
-
-        if st.button(f"Видалити товар {idx+1}"):
+    # --- Удалить товар (вне формы) ---
+    for idx in range(len(st.session_state.order_rows)):
+        col = st.columns(1)[0]
+        if col.button(f"❌ Видалити товар {idx+1}", key=f"del_{idx}"):
             st.session_state.order_rows.pop(idx)
-            st.rerun()
+            st.experimental_rerun()
 
-    st.markdown("---")
-    if st.session_state.order_rows:
-        order_total = sum(row["total_sum"] for row in st.session_state.order_rows)
-    else:
-        order_total = 0
+    # --- ОСНОВНАЯ ФОРМА ---
+    with st.form("save_order_form"):
+        st.header("Створення замовлення")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            name = st.text_input("Ім'я", value=client_info.get("Имя", ""))
+        with col2:
+            surname = st.text_input("Прізвище", value=client_info.get("Фамилия", ""))
+        with col3:
+            phone = st.text_input("Номер телефону", value=client_info.get("Номер", ""))
 
-    if pay_type == "Без оплати":
-        to_pay = order_total
-    elif pay_type == "Передплата":
-        to_pay = order_total - prepay_amount
-    else:
-        to_pay = 0
+        col4, col5, col6 = st.columns(3)
+        with col4:
+            city = st.text_input("Місто", value=client_info.get("Город", ""))
+        with col5:
+            np = st.text_input("НП (Нова Пошта)", value=client_info.get("НП", ""))
+        with col6:
+            delivery = st.text_input("Доставка", value=client_info.get("Доставка", ""))
 
-    st.info(f"**До сплати:** {to_pay:.2f} {currency}")
+        comment = st.text_input("Коментар (Ім’я отримувача)", value=client_info.get("Комент", ""))
 
-    if st.button("Зберегти замовлення"):
-        order_id = get_next_order_id()
-        save_order_to_sheet(
-            st.session_state.order_rows,
-            {
-                "ID": st.session_state.get("client_id"),
-                "Ім'я": name,
-                "Прізвище": surname,
-                "Номер телефону": phone,
-                "Місто": city,
-                "НП": np,
-                "Доставка": delivery,
-                "Коментар": comment
-            },
-            {
-                "Валюта": currency,
-                "Тип оплати": pay_type,
-                "Сумма предоплати": prepay_amount,
-                "До сплати": to_pay
-            },
-            order_id
-        )
-        st.session_state.order_rows = []
-        st.session_state.order_saved = order_id
-        st.rerun()
+        st.markdown("---")
+        currency = st.selectbox("Валюта", ["ГРН", "USD"])
+        pay_type = st.selectbox("Тип оплати", ["Без оплати", "Передплата", "Повна оплата"])
+        prepay_amount = 0.0
+        if pay_type == "Передплата":
+            prepay_amount = st.number_input("Сума предоплати", min_value=0.0, step=1.0, value=0.0)
+        else:
+            prepay_amount = 0.0
+
+        st.markdown("---")
+
+        # --- Список товаров в заказе ---
+        price_map = {row["Модель"]: row for row in price_data}
+        for idx, row in enumerate(st.session_state.order_rows):
+            st.markdown(f"**Товар #{idx+1}**")
+            cols = st.columns(6)
+            models = [r["Модель"] for r in price_data]
+            row["model"] = cols[0].selectbox(
+                "Модель", models, index=models.index(row["model"]) if row["model"] in models else 0, key=f"model_{idx}"
+            )
+            color_choices = [r["Цвет"] for r in color_data if r["Модель"] == row["model"]]
+            row["color"] = cols[1].selectbox(
+                "Колір", color_choices + ["Ввести свій..."], index=color_choices.index(row["color"]) if row["color"] in color_choices else 0, key=f"color_{idx}"
+            )
+            if row["color"] == "Ввести свій...":
+                row["color"] = cols[1].text_input("Введіть свій колір:", key=f"custom_color_{idx}")
+
+            size_display = ""
+            v_rostovke_db = 1
+            for sd in size_data:
+                if sd["Модель"] == row["model"]:
+                    size_display = str(sd.get("Размеры ростовки", "")).strip()
+                    try:
+                        v_rostovke_db = int(sd.get("В ростовке", 1))
+                    except:
+                        v_rostovke_db = 1
+                    break
+            sizes_display = [size_display] if size_display else []
+            current_idx = sizes_display.index(row["size"]) if row["size"] in sizes_display else len(sizes_display)
+            row["size"] = cols[2].selectbox(
+                "Розмір", sizes_display + ["Ввести вручну..."], index=current_idx, key=f"size_{idx}"
+            )
+            if row["size"] == "Ввести вручну...":
+                row["size"] = cols[2].text_input("Введіть розмір:", key=f"custom_size_{idx}")
+                row["v_rostovke"] = cols[3].number_input("Кількість у рост.", value=row.get("v_rostovke", 1), min_value=1, step=1, key=f"v_rost_{idx}")
+            else:
+                row["v_rostovke"] = cols[3].number_input("Кількість у рост.", value=v_rostovke_db, min_value=1, step=1, key=f"v_rost_{idx}", disabled=True)
+
+            row["qty_rostovok"] = cols[4].number_input("Кількість ростовок", value=row.get("qty_rostovok", 1), min_value=1, step=1, key=f"qty_rost_{idx}")
+            row["total_qty"] = row["v_rostovke"] * row["qty_rostovok"]
+            cols[5].number_input("Загальна Кількість", value=row["total_qty"], min_value=1, step=1, key=f"total_qty_{idx}", disabled=True)
+
+            price_col, disc_col, sum_col = st.columns([2, 2, 3])
+            price = None
+            if row["model"] in price_map:
+                price = float(price_map[row["model"]].get("Ц $/шт", 0)) if currency == "USD" else float(price_map[row["model"]].get("Ц ГРН/шт", 0))
+            if price is not None:
+                row["price"] = price_col.number_input("Ціна/шт", value=price, min_value=0.0, step=0.01, key=f"price_{idx}", disabled=True)
+            else:
+                row["price"] = price_col.number_input("Ціна/шт", min_value=0.0, step=0.01, key=f"price_{idx}")
+
+            row["discount"] = disc_col.number_input("Знижка", value=row.get("discount", 0.0), min_value=0.0, step=1.0, key=f"discount_{idx}")
+            row["total_sum"] = row["total_qty"] * row["price"] - row["discount"]
+            sum_col.number_input("Загалом, грн", value=row["total_sum"], key=f"total_sum_{idx}", disabled=True)
+
+        st.markdown("---")
+        if st.session_state.order_rows:
+            order_total = sum(row["total_sum"] for row in st.session_state.order_rows)
+        else:
+            order_total = 0.0
+
+        if pay_type == "Без оплати":
+            to_pay = order_total
+        elif pay_type == "Передплата":
+            to_pay = order_total - prepay_amount
+        else:
+            to_pay = 0.0
+
+        st.info(f"**До сплати:** {to_pay:.2f} {currency}")
+
+        save_btn = st.form_submit_button("Зберегти замовлення")
+        if save_btn:
+            order_id = get_next_order_id()
+            save_order_to_sheet(
+                st.session_state.order_rows,
+                {
+                    "ID": st.session_state.get("client_id"),
+                    "Ім'я": name,
+                    "Прізвище": surname,
+                    "Номер телефону": phone,
+                    "Місто": city,
+                    "НП": np,
+                    "Доставка": delivery,
+                    "Коментар": comment
+                },
+                {
+                    "Валюта": currency,
+                    "Тип оплати": pay_type,
+                    "Сумма предоплати": float(prepay_amount),
+                    "До сплати": float(to_pay)
+                },
+                order_id
+            )
+            st.session_state.order_rows = []
+            st.session_state.order_saved = order_id
+            st.experimental_rerun()
 
     if st.session_state.get("order_saved"):
         order_id = st.session_state.order_saved
@@ -547,7 +554,7 @@ def page_edit_order():
     st.markdown("---")
     currency = st.selectbox("Валюта", ["ГРН", "USD"], index=0 if first_row.get("Валюта", "ГРН") == "ГРН" else 1)
     pay_type = st.selectbox("Тип оплати", ["Без оплати", "Передплата", "Повна оплата"],
-        index=["Без оплати", "Передплата", "Повна оплата"].index(first_row.get("Тип оплати", "Без оплати")))
+        index=["Без оплати", "Передплата", "Повна оплата"].index(first_row.get("Тип оплаты", "Без оплати")))
     prepay_amount = st.number_input("Сума предоплати", min_value=0.0, step=1.0, value=float(first_row.get("Сумма предоплаты", 0)))
     to_pay = st.number_input("До сплати", min_value=0.0, step=1.0, value=float(first_row.get("До сплати", 0)))
     st.markdown("---")
@@ -606,7 +613,7 @@ def page_edit_order():
             "Доставка": delivery,
             "Комментарий": comment,
             "Валюта": currency,
-            "Тип оплати": pay_type,
+            "Тип оплаты": pay_type,
             "Сумма предоплаты": prepay_amount,
             "До сплати": to_pay,
         }

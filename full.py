@@ -117,7 +117,7 @@ def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
             client_info["Коментар"],
             payment_info["Валюта"],
             payment_info["Тип оплати"],
-            payment_info["Сумма предоплаты"] if payment_info["Тип оплаты"] == "Передплата" else 0,
+            payment_info["Сумма предоплаты"] if payment_info["Тип оплати"] == "Передплата" else 0,
             payment_info["До сплати"],
             row.get("model", ""),
             row.get("color", ""),
@@ -547,7 +547,7 @@ def page_edit_order():
     st.markdown("---")
     currency = st.selectbox("Валюта", ["ГРН", "USD"], index=0 if first_row.get("Валюта", "ГРН") == "ГРН" else 1)
     pay_type = st.selectbox("Тип оплати", ["Без оплати", "Передплата", "Повна оплата"],
-        index=["Без оплати", "Передплата", "Повна оплата"].index(first_row.get("Тип оплаты", "Без оплати")))
+        index=["Без оплати", "Передплата", "Повна оплата"].index(first_row.get("Тип оплати", "Без оплати")))
     prepay_amount = st.number_input("Сума предоплати", min_value=0.0, step=1.0, value=float(first_row.get("Сумма предоплаты", 0)))
     to_pay = st.number_input("До сплати", min_value=0.0, step=1.0, value=float(first_row.get("До сплати", 0)))
     st.markdown("---")

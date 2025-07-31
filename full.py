@@ -95,7 +95,7 @@ def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
             sheet.append_row([
                 "ID заказа",
                 "ID клиента", "Имя", "Фамилия", "Телефон", "Город", "НП", "Доставка", "Комментарий",
-                "Валюта", "Тип оплаты", "Сумма предоплаты", "До сплати",
+                "Валюта", "Тип оплати", "Сумма предоплаты", "До сплати",
                 "Название модели", "Цвет", "Размер", "Ручной размер", "К-во в ростовке", "К-во ростовок",
                 "Общ. кол-во", "Цена/шт", "Скидка", "Сумма (грн)", "Дата заказа", "Відмова клієнта"
             ])
@@ -155,7 +155,7 @@ def update_order_rows_in_sheet(order_id, order_rows, common_fields):
             common_fields["Доставка"],
             common_fields["Комментарий"],
             common_fields["Валюта"],
-            common_fields["Тип оплаты"],
+            common_fields["Тип оплати"],
             common_fields["Сумма предоплаты"],
             common_fields["До сплати"],
             row_data.get("model", ""),
@@ -606,7 +606,7 @@ def page_edit_order():
             "Доставка": delivery,
             "Комментарий": comment,
             "Валюта": currency,
-            "Тип оплаты": pay_type,
+            "Тип оплати": pay_type,
             "Сумма предоплаты": prepay_amount,
             "До сплати": to_pay,
         }

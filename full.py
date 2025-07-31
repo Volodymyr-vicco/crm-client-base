@@ -117,7 +117,7 @@ def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
             client_info["Коментар"],
             payment_info["Валюта"],
             payment_info["Тип оплати"],
-            payment_info["Сумма предоплаты"] if payment_info["Тип оплати"] == "Передплата" else 0,
+            payment_info.get("Сумма предоплаты", 0) if payment_info.get("Тип оплати") == "Передплата" else 0,
             payment_info["До сплати"],
             row.get("model", ""),
             row.get("color", ""),

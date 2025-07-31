@@ -330,7 +330,7 @@ def page_order():
     pay_type = st.selectbox("Тип оплати", ["Без оплати", "Передплата", "Повна оплата"])
     prepay_amount = 0
     if pay_type == "Передплата":
-        prepay_amount = st.number_input("Сума предоплати", min_value=0.0, step=1.0)
+        prepay_amount = st.number_input("Сума предоплаты", min_value=0.0, step=1.0)
 
     st.markdown("---")
     models = []
@@ -548,7 +548,7 @@ def page_edit_order():
     currency = st.selectbox("Валюта", ["ГРН", "USD"], index=0 if first_row.get("Валюта", "ГРН") == "ГРН" else 1)
     pay_type = st.selectbox("Тип оплати", ["Без оплати", "Передплата", "Повна оплата"],
         index=["Без оплати", "Передплата", "Повна оплата"].index(first_row.get("Тип оплати", "Без оплати")))
-    prepay_amount = st.number_input("Сума предоплати", min_value=0.0, step=1.0, value=float(first_row.get("Сумма предоплаты", 0)))
+    prepay_amount = st.number_input("Сума предоплаты", min_value=0.0, step=1.0, value=float(first_row.get("Сумма предоплаты", 0)))
     to_pay = st.number_input("До сплати", min_value=0.0, step=1.0, value=float(first_row.get("До сплати", 0)))
     st.markdown("---")
 

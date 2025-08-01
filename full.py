@@ -27,6 +27,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ==== PHONE NORMALIZER ====
+def normalize_phone(phone_raw):
+    phone_str = str(phone_raw).strip()
+    # Если только цифры и не начинается с нуля, добавим 0 (например, 973123456 → 0973123456)
+    if phone_str.isdigit() and len(phone_str) == 9 and not phone_str.startswith('0'):
+        return '0' + phone_str
+    return phone_str
+
 # --- Google Sheets Setup ---
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
@@ -112,7 +120,7 @@ def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
             client_info["ID"],
             client_info["Ім'я"],
             client_info["Прізвище"],
-            client_info["Номер телефону"],
+            normalize_phone(client_info["Номер телефону"]),
             client_info["Місто"],
             client_info["НП"],
             client_info["Доставка"],
@@ -150,7 +158,7 @@ def update_order_rows_in_sheet(order_id, order_rows, common_fields):
         sheet.update(f"C{upd_row_num}:Z{upd_row_num}", [[
             common_fields["Имя"],
             common_fields["Фамилия"],
-            common_fields["Номер"],
+            normalize_phone(common_fields["Номер"]),
             common_fields["Город"],
             common_fields["НП"],
             common_fields["Доставка"],
@@ -204,7 +212,7 @@ class PDF(FPDF):
         self.set_font("DejaVu", '', 12)
         self.ln(20)
         self.cell(0, 8, f"Адреса доставки: {order_info['city']}, {order_info['np']}", ln=1)
-        self.cell(0, 8, f"Тел. отримувача: {order_info['phone']}", ln=1)
+        self.cell(0, 8, f"Тел. отримувача: {normalize_phone(order_info['phone'])}", ln=1)
         self.cell(0, 8, f"Ім’я отримувача: {order_info['name']} {order_info['surname']}", ln=1)
         self.ln(4)
         columns = ["Модель", "Колір", "Розмір", "У рост/шт", "Рост шт", "Ціна шт", "Знижка", "Сума"]
@@ -277,9 +285,7 @@ def page_check():
     records = load_clients()
     client_dict = {}
     for row in records:
-        phone = str(row.get("Номер", "")).strip()
-        if phone and phone[0] != '0' and len(phone) == 9:
-            phone = '0' + phone
+        phone = normalize_phone(row.get("Номер", ""))
         client_dict[phone] = {
             "id": row.get("ID"),
             "name": row.get("Имя", ""),
@@ -351,7 +357,7 @@ def page_create():
         actual_id = get_next_id()
         values = [
             actual_id,
-            phone,
+            normalize_phone(phone),
             "",
             name,
             surname,
@@ -403,7 +409,7 @@ def page_order():
     with col2:
         surname = st.text_input("Прізвище", value=client_info.get("Фамилия", ""))
     with col3:
-        phone = st.text_input("Номер телефону", value=client_info.get("Номер", ""))
+        phone = st.text_input("Номер телефону", value=normalize_phone(client_info.get("Номер", "")))
 
     col4, col5, col6 = st.columns(3)
     with col4:
@@ -549,7 +555,7 @@ def page_order():
                 "ID": st.session_state.get("client_id"),
                 "Ім'я": name,
                 "Прізвище": surname,
-                "Номер телефону": phone,
+                "Номер телефону": normalize_phone(phone),
                 "Місто": city,
                 "НП": np,
                 "Доставка": delivery,
@@ -573,7 +579,7 @@ def page_order():
             pdf_client_info = {
                 "city": city,
                 "np": np or delivery,
-                "phone": phone,
+                "phone": normalize_phone(phone),
                 "name": name,
                 "surname": surname
             }
@@ -692,7 +698,7 @@ def page_edit_order():
 
     name = st.text_input("Ім'я", value=first_row.get("Имя", ""))
     surname = st.text_input("Прізвище", value=first_row.get("Фамилия", ""))
-    phone = st.text_input("Телефон", value=first_row.get("Номер", ""))
+    phone = st.text_input("Телефон", value=normalize_phone(first_row.get("Номер", "")))
     city = st.text_input("Місто", value=first_row.get("Город", ""))
     np = st.text_input("НП", value=first_row.get("НП", ""))
     delivery = st.text_input("Доставка", value=first_row.get("Доставка", ""))
@@ -758,7 +764,7 @@ def page_edit_order():
         common_fields = {
             "Имя": name,
             "Фамилия": surname,
-            "Номер": phone,
+            "Номер": normalize_phone(phone),
             "Город": city,
             "НП": np,
             "Доставка": delivery,
@@ -782,7 +788,7 @@ def page_edit_order():
         pdf_client_info = {
             "city": city,
             "np": np or delivery,
-            "phone": phone,
+            "phone": normalize_phone(phone),
             "name": name,
             "surname": surname
         }
@@ -835,7 +841,7 @@ def page_edit_client():
         st.stop()
     st.markdown("<h2 style='text-align: center;'>Редагування картки клієнта</h2>", unsafe_allow_html=True)
     with st.form("edit_client_form"):
-        phone = st.text_input("Номер телефону", value=client.get("Номер", ""))
+        phone = st.text_input("Номер телефону", value=normalize_phone(client.get("Номер", "")))
         name = st.text_input("Ім'я", value=client.get("Имя", ""))
         surname = st.text_input("Прізвище", value=client.get("Фамилия", ""))
         city = st.text_input("Місто", value=client.get("Город", ""))
@@ -846,7 +852,7 @@ def page_edit_client():
     if submitted:
         values = [
             client_id,
-            phone,
+            normalize_phone(phone),
             "",
             name,
             surname,
@@ -864,104 +870,6 @@ def page_edit_client():
     if st.button("⬅️ До пошуку"):
         go_to("check")
 
-# ==== Генерация PDF (одна функция на оба случая) ====
-from fpdf import FPDF
-import tempfile
-
-def generate_pdf(order_info, order_rows, summary_data):
-    class PDF(FPDF):
-        def header(self):
-            self.set_xy(10, 10)
-            self.set_font("DejaVu", '', 10)
-            self.cell(80, 5, "Ukraine, Kharkiv, Levada", ln=1)
-            self.set_x(10)
-            self.cell(80, 5, "Tel: +38 067 790 12 96", ln=1)
-            logo_width = 90
-            page_width = self.w - 2 * self.l_margin
-            x_logo = self.l_margin + (page_width - logo_width) / 2
-            self.image("vicco_logo.png", x=x_logo, y=12, w=logo_width)
-            self.ln(35)
-
-        def draw_row(self, row, col_widths, height=8):
-            max_lines = 1
-            for i, val in enumerate(row):
-                lines = self.multi_cell(col_widths[i], height, str(val), border=0, align="L", split_only=True)
-                max_lines = max(max_lines, len(lines))
-            y_start = self.get_y()
-            x_start = self.get_x()
-            for i, val in enumerate(row):
-                self.set_xy(x_start + sum(col_widths[:i]), y_start)
-                self.multi_cell(col_widths[i], height, str(val), border=1, align="L")
-            self.set_xy(x_start, y_start + height * max_lines)
-
-        def company_table(self, order_info, order_rows):
-            self.set_font("DejaVu", '', 12)
-            self.ln(20)
-            self.cell(0, 8, f"Адреса доставки: {order_info['city']}, {order_info['np']}", ln=1)
-            self.cell(0, 8, f"Тел. отримувача: {order_info['phone']}", ln=1)
-            self.cell(0, 8, f"Ім’я отримувача: {order_info['name']} {order_info['surname']}", ln=1)
-            self.ln(4)
-            columns = ["Модель", "Колір", "Розмір", "У рост/шт", "Рост шт", "Ціна шт", "Знижка", "Сума"]
-            col_widths = [30, 28, 22, 24, 22, 24, 20, 20]
-            self.set_font("DejaVu", '', 11)
-            self.draw_row(columns, col_widths, height=8)
-            self.set_font("DejaVu", '', 10)
-            for row in order_rows:
-                self.draw_row([
-                    row['model'],
-                    row['color'],
-                    row['size'],
-                    row['v_rostovke'],
-                    row['qty_rostovok'],
-                    row['price'],
-                    row['discount'],
-                    row['total_sum'],
-                ], col_widths, height=8)
-
-        def order_summary(self, summary_data, qr_path="vicco_qr.jpg"):
-            self.ln(8)
-            self.set_font("DejaVu", '', 13)
-            y_start = self.get_y()
-
-            self.set_xy(20, y_start)
-            self.cell(60, 9, "Валюта замовлення:", 0, 0)
-            self.cell(40, 9, str(summary_data['currency']), 0, 1)
-
-            self.set_x(20)
-            self.cell(50, 9, "Стан оплати:", 0, 0)
-            self.cell(30, 9, str(summary_data['pay_status']), 0, 1)
-
-            self.set_x(20)
-            self.set_fill_color(200, 200, 200)
-            self.cell(35, 11, "До сплати:", 0, 0, 'L', fill=True)
-            self.set_fill_color(255, 255, 255)
-            self.cell(35, 11, str(summary_data['to_pay']), 0, 1)
-
-            y_summary = y_start
-            self.set_xy(120, y_summary)
-            self.cell(50, 9, "Сумма замовлення:", 0, 0)
-            self.cell(30, 9, str(summary_data['order_sum']), 0, 1)
-
-            self.set_x(120)
-            self.cell(38, 9, "Передплата:  ", 0, 0)
-            self.cell(32, 9, str(summary_data['prepay']), 0, 1)
-
-            self.set_x(135)
-            if os.path.exists(qr_path):
-                self.image(qr_path, x=135, y=self.get_y(), w=30, h=30)
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tf:
-        pdf = PDF(orientation='P', unit='mm', format='A4')
-        pdf.set_left_margin(10)
-        pdf.set_right_margin(10)
-        pdf.set_top_margin(10)
-        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
-        pdf.add_page()
-        pdf.company_table(order_info, order_rows)
-        pdf.order_summary(summary_data)
-        pdf.output(tf.name)
-        return tf.name
-
 # ==== Роутинг ====
 if st.session_state.page == "check":
     page_check()
@@ -975,4 +883,3 @@ elif st.session_state.page == "edit_order":
     page_edit_order()
 elif st.session_state.page == "edit_client":
     page_edit_client()
-

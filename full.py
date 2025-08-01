@@ -96,7 +96,7 @@ def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
         else:
             sheet.append_row([
                 "ID заказа",
-                "ID клиента", "Имя", "Фамилия", "Телефон", "Город", "НП", "Доставка", "Комментарий",
+                "ID клиента", "Имя", "Фамилия", "Номер", "Город", "НП", "Доставка", "Комментарий",
                 "Валюта", "Тип оплати", "Сумма предоплаты", "До сплати",
                 "Название модели", "Цвет", "Размер", "Ручной размер", "К-во в ростовке", "К-во ростовок",
                 "Общ. кол-во", "Цена/шт", "Скидка", "Сумма (грн)", "Дата заказа", "Відмова клієнта"
@@ -150,7 +150,7 @@ def update_order_rows_in_sheet(order_id, order_rows, common_fields):
         sheet.update(f"C{upd_row_num}:Z{upd_row_num}", [[
             common_fields["Имя"],
             common_fields["Фамилия"],
-            common_fields["Телефон"],
+            common_fields["Номер"],
             common_fields["Город"],
             common_fields["НП"],
             common_fields["Доставка"],
@@ -692,7 +692,7 @@ def page_edit_order():
 
     name = st.text_input("Ім'я", value=first_row.get("Имя", ""))
     surname = st.text_input("Прізвище", value=first_row.get("Фамилия", ""))
-    phone = st.text_input("Телефон", value=first_row.get("Телефон", ""))
+    phone = st.text_input("Телефон", value=first_row.get("Номер", ""))
     city = st.text_input("Місто", value=first_row.get("Город", ""))
     np = st.text_input("НП", value=first_row.get("НП", ""))
     delivery = st.text_input("Доставка", value=first_row.get("Доставка", ""))
@@ -758,7 +758,7 @@ def page_edit_order():
         common_fields = {
             "Имя": name,
             "Фамилия": surname,
-            "Телефон": phone,
+            "Номер": phone,
             "Город": city,
             "НП": np,
             "Доставка": delivery,

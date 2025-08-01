@@ -4,6 +4,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import os
 import json
+from fpdf import FPDF
+import tempfile
 
 # ====== ДОБАВЛЯЕМ КАСТОМНЫЙ CSS ======
 st.markdown(
@@ -134,14 +136,13 @@ def save_order_to_sheet(order_rows, client_info, payment_info, order_id):
         ])
 
 def update_order_rows_in_sheet(order_id, order_rows, common_fields):
-    """Обновить все строки заказа по ID заказа"""
     sheet = client.open("База клиентов").worksheet("База заказов")
     data = sheet.get_all_records()
     header = sheet.row_values(1)
     rows_to_update = []
     for i, row in enumerate(data):
         if str(row.get("ID заказа")) == str(order_id):
-            rows_to_update.append(i + 2)  # get_all_records без шапки, а GS с 1
+            rows_to_update.append(i + 2)
     for idx, upd_row_num in enumerate(rows_to_update):
         if idx >= len(order_rows):
             break
@@ -172,6 +173,95 @@ def update_order_rows_in_sheet(order_id, order_rows, common_fields):
             "+" if row_data.get("rejected") else ""
         ]])
     load_orders.clear()
+
+# ==== PDF ====
+class PDF(FPDF):
+    def header(self):
+        self.set_xy(10, 10)
+        self.set_font("DejaVu", '', 10)
+        self.cell(80, 5, "Ukraine, Kharkiv, Levada", ln=1)
+        self.set_x(10)
+        self.cell(80, 5, "Tel: +38 067 790 12 96", ln=1)
+        logo_width = 90
+        page_width = self.w - 2 * self.l_margin
+        x_logo = self.l_margin + (page_width - logo_width) / 2
+        try:
+            self.image("vicco_logo.png", x=x_logo, y=12, w=logo_width)
+        except: pass
+        self.ln(35)
+    def draw_row(self, row, col_widths, height=8):
+        max_lines = 1
+        for i, val in enumerate(row):
+            lines = self.multi_cell(col_widths[i], height, str(val), border=0, align="L", split_only=True)
+            max_lines = max(max_lines, len(lines))
+        y_start = self.get_y()
+        x_start = self.get_x()
+        for i, val in enumerate(row):
+            self.set_xy(x_start + sum(col_widths[:i]), y_start)
+            self.multi_cell(col_widths[i], height, str(val), border=1, align="L")
+        self.set_xy(x_start, y_start + height * max_lines)
+    def company_table(self, order_info, order_rows):
+        self.set_font("DejaVu", '', 12)
+        self.ln(20)
+        self.cell(0, 8, f"Адреса доставки: {order_info['city']}, {order_info['np']}", ln=1)
+        self.cell(0, 8, f"Тел. отримувача: {order_info['phone']}", ln=1)
+        self.cell(0, 8, f"Ім’я отримувача: {order_info['name']} {order_info['surname']}", ln=1)
+        self.ln(4)
+        columns = ["Модель", "Колір", "Розмір", "У рост/шт", "Рост шт", "Ціна шт", "Знижка", "Сума"]
+        col_widths = [30, 28, 22, 24, 22, 24, 20, 20]
+        self.set_font("DejaVu", '', 11)
+        self.draw_row(columns, col_widths, height=8)
+        self.set_font("DejaVu", '', 10)
+        for row in order_rows:
+            self.draw_row([
+                row['model'],
+                row['color'],
+                row['size'],
+                row['v_rostovke'],
+                row['qty_rostovok'],
+                row['price'],
+                row['discount'],
+                row['total_sum'],
+            ], col_widths, height=8)
+    def order_summary(self, summary_data, qr_path):
+        self.ln(8)
+        self.set_font("DejaVu", '', 13)
+        y_start = self.get_y()
+        self.set_xy(20, y_start)
+        self.cell(60, 9, "Валюта замовлення:", 0, 0)
+        self.cell(40, 9, str(summary_data['currency']), 0, 1)
+        self.set_x(20)
+        self.cell(50, 9, "Стан оплати:", 0, 0)
+        self.cell(30, 9, str(summary_data['pay_status']), 0, 1)
+        self.set_x(20)
+        self.set_fill_color(200, 200, 200)
+        self.cell(35, 11, "До сплати:", 0, 0, 'L', fill=True)
+        self.set_fill_color(255, 255, 255)
+        self.cell(35, 11, str(summary_data['to_pay']), 0, 1)
+        y_summary = y_start
+        self.set_xy(120, y_summary)
+        self.cell(50, 9, "Сумма замовлення:", 0, 0)
+        self.cell(30, 9, str(summary_data['order_sum']), 0, 1)
+        self.set_x(120)
+        self.cell(38, 9, "Передплата:  ", 0, 0)
+        self.cell(32, 9, str(summary_data['prepay']), 0, 1)
+        try:
+            self.set_x(135)
+            self.image(qr_path, x=135, y=self.get_y(), w=30, h=30)
+        except: pass
+
+def generate_pdf(client_info, order_rows, summary_data):
+    pdf = PDF(orientation='P', unit='mm', format='A4')
+    pdf.set_left_margin(10)
+    pdf.set_right_margin(10)
+    pdf.set_top_margin(10)
+    pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
+    pdf.add_page()
+    pdf.company_table(client_info, order_rows)
+    pdf.order_summary(summary_data, qr_path="vicco_qr.jpg")
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    pdf.output(tmp_file.name)
+    return tmp_file.name
 
 # ==== Навигация ====
 if "page" not in st.session_state:
@@ -272,7 +362,7 @@ def page_create():
             1
         ]
         append_client(values)
-        load_clients.clear()  # <--- Сброс кэша после добавления!
+        load_clients.clear()
         st.success(f"Клієнта додано з ID: {actual_id}")
         st.session_state.client_id = actual_id
         st.session_state.client_name = name
@@ -292,7 +382,7 @@ def page_create():
     if st.button("⬅️ Назад до перевірки"):
         go_to("check")
 
-# ==== PAGE 3: Создание заказа ====  (оставил твой!)
+# ==== PAGE 3: Создание заказа ====
 def page_order():
     price_data = load_price()
     size_data = load_sizes()
@@ -330,7 +420,9 @@ def page_order():
     pay_type = st.selectbox("Тип оплати", ["Без оплати", "Передплата", "Повна оплата"])
     prepay_amount = 0
     if pay_type == "Передплата":
-        prepay_amount = st.number_input("Сума предоплаты", min_value=0.0, step=1.0)
+        prepay_amount = st.number_input("Сума предоплати", min_value=0.0, step=1.0)
+    else:
+        prepay_amount = 0.0
 
     st.markdown("---")
     models = []
@@ -444,7 +536,12 @@ def page_order():
 
     st.info(f"**До сплати:** {to_pay:.2f} {currency}")
 
-    if st.button("Зберегти замовлення"):
+    # --- Обе кнопки ---
+    col_btn1, col_btn2 = st.columns(2)
+    save_clicked = col_btn1.button("Зберегти замовлення")
+    print_clicked = col_btn2.button("Зберегти та роздрукувати")
+
+    if save_clicked or print_clicked:
         order_id = get_next_order_id()
         save_order_to_sheet(
             st.session_state.order_rows,
@@ -461,14 +558,71 @@ def page_order():
             {
                 "Валюта": currency,
                 "Тип оплати": pay_type,
-                "Сумма предоплати": prepay_amount,
+                "Сумма предоплаты": prepay_amount,
                 "До сплати": to_pay
             },
             order_id
         )
         st.session_state.order_rows = []
         st.session_state.order_saved = order_id
-        st.rerun()
+
+        # --- Для печати PDF ---
+        if print_clicked:
+            # Получаем данные для PDF
+            # Клиент
+            pdf_client_info = {
+                "city": city,
+                "np": np or delivery,
+                "phone": phone,
+                "name": name,
+                "surname": surname
+            }
+            # Таблица товаров
+            pdf_order_rows = []
+            for row in st.session_state.order_rows if st.session_state.order_rows else []:
+                pdf_order_rows.append({
+                    'model': row.get('model', ''),
+                    'color': row.get('color', ''),
+                    'size': row.get('size', ''),
+                    'v_rostovke': row.get('v_rostovke', ''),
+                    'qty_rostovok': row.get('qty_rostovok', ''),
+                    'price': row.get('price', ''),
+                    'discount': row.get('discount', ''),
+                    'total_sum': row.get('total_sum', ''),
+                })
+            # Если только что сохранено, то перезагружаем все строки заказа
+            sheet = client.open("База клиентов").worksheet("База заказов")
+            all_orders = sheet.get_all_records()
+            order_rows_gs = [o for o in all_orders if str(o.get("ID заказа")) == str(order_id)]
+            pdf_order_rows = [{
+                'model': r.get('Название модели', ''),
+                'color': r.get('Цвет', ''),
+                'size': r.get('Размер', ''),
+                'v_rostovke': r.get('К-во в ростовке', ''),
+                'qty_rostovok': r.get('К-во ростовок', ''),
+                'price': r.get('Цена/шт', ''),
+                'discount': r.get('Скидка', ''),
+                'total_sum': r.get('Сумма (грн)', ''),
+            } for r in order_rows_gs]
+            # Суммарные данные
+            summary_data = {
+                'currency': currency,
+                'order_sum': f"{order_total:.2f}",
+                'pay_status': pay_type,
+                'prepay': f"{prepay_amount:.2f}",
+                'to_pay': f"{to_pay:.2f}"
+            }
+            pdf_path = generate_pdf(pdf_client_info, pdf_order_rows, summary_data)
+            with open(pdf_path, "rb") as f:
+                st.download_button(
+                    label="Завантажити PDF замовлення",
+                    data=f,
+                    file_name=f"zamovlennia_{order_id}.pdf",
+                    mime="application/pdf"
+                )
+            os.remove(pdf_path)
+        else:
+            st.rerun()
 
     if st.session_state.get("order_saved"):
         order_id = st.session_state.order_saved
@@ -516,7 +670,7 @@ def page_orders():
         st.rerun()
     st.stop()
 
-# ==== PAGE 5: Карточка заказа (редактирование) ====
+# ==== PAGE 5: Карточка заказа (редактирование и печать) ====
 def page_edit_order():
     orders = load_orders()
     order_id = st.session_state.get("edit_order_id")
@@ -524,7 +678,7 @@ def page_edit_order():
     size_data = load_sizes()
     color_data = load_colors()
 
-    # Берём все строки этого заказа
+    # Все строки этого заказа
     order_rows = [o for o in orders if str(o.get("ID заказа")) == str(order_id)]
     if not order_rows:
         st.warning("Замовлення не знайдено.")
@@ -596,7 +750,11 @@ def page_edit_order():
         st.experimental_rerun()
 
     st.markdown("---")
-    if st.button("Зберегти зміни"):
+    col_btn1, col_btn2 = st.columns(2)
+    save_clicked = col_btn1.button("Зберегти зміни")
+    print_clicked = col_btn2.button("Роздрукувати")
+
+    if save_clicked:
         common_fields = {
             "Имя": name,
             "Фамилия": surname,
@@ -617,6 +775,46 @@ def page_edit_order():
         update_order_rows_in_sheet(order_id, rows, common_fields)
         st.success("Зміни збережено!")
         st.session_state.pop("edit_order_rows")
+        st.stop()
+
+    if print_clicked:
+        # Готовим данные для pdf
+        pdf_client_info = {
+            "city": city,
+            "np": np or delivery,
+            "phone": phone,
+            "name": name,
+            "surname": surname
+        }
+        pdf_order_rows = []
+        for row in rows:
+            pdf_order_rows.append({
+                'model': row.get('model', ''),
+                'color': row.get('color', ''),
+                'size': row.get('size', ''),
+                'v_rostovke': row.get('v_rostovke', ''),
+                'qty_rostovok': row.get('qty_rostovok', ''),
+                'price': row.get('price', ''),
+                'discount': row.get('discount', ''),
+                'total_sum': row.get('total_sum', ''),
+            })
+        order_total = sum(r['total_sum'] for r in rows)
+        summary_data = {
+            'currency': currency,
+            'order_sum': f"{order_total:.2f}",
+            'pay_status': pay_type,
+            'prepay': f"{prepay_amount:.2f}",
+            'to_pay': f"{to_pay:.2f}"
+        }
+        pdf_path = generate_pdf(pdf_client_info, pdf_order_rows, summary_data)
+        with open(pdf_path, "rb") as f:
+            st.download_button(
+                label="Завантажити PDF замовлення",
+                data=f,
+                file_name=f"zamovlennia_{order_id}.pdf",
+                mime="application/pdf"
+            )
+        os.remove(pdf_path)
         st.stop()
 
     if st.button("⬅️ Назад до всіх замовлень"):
@@ -666,6 +864,104 @@ def page_edit_client():
     if st.button("⬅️ До пошуку"):
         go_to("check")
 
+# ==== Генерация PDF (одна функция на оба случая) ====
+from fpdf import FPDF
+import tempfile
+
+def generate_pdf(order_info, order_rows, summary_data):
+    class PDF(FPDF):
+        def header(self):
+            self.set_xy(10, 10)
+            self.set_font("DejaVu", '', 10)
+            self.cell(80, 5, "Ukraine, Kharkiv, Levada", ln=1)
+            self.set_x(10)
+            self.cell(80, 5, "Tel: +38 067 790 12 96", ln=1)
+            logo_width = 90
+            page_width = self.w - 2 * self.l_margin
+            x_logo = self.l_margin + (page_width - logo_width) / 2
+            self.image("vicco_logo.png", x=x_logo, y=12, w=logo_width)
+            self.ln(35)
+
+        def draw_row(self, row, col_widths, height=8):
+            max_lines = 1
+            for i, val in enumerate(row):
+                lines = self.multi_cell(col_widths[i], height, str(val), border=0, align="L", split_only=True)
+                max_lines = max(max_lines, len(lines))
+            y_start = self.get_y()
+            x_start = self.get_x()
+            for i, val in enumerate(row):
+                self.set_xy(x_start + sum(col_widths[:i]), y_start)
+                self.multi_cell(col_widths[i], height, str(val), border=1, align="L")
+            self.set_xy(x_start, y_start + height * max_lines)
+
+        def company_table(self, order_info, order_rows):
+            self.set_font("DejaVu", '', 12)
+            self.ln(20)
+            self.cell(0, 8, f"Адреса доставки: {order_info['city']}, {order_info['np']}", ln=1)
+            self.cell(0, 8, f"Тел. отримувача: {order_info['phone']}", ln=1)
+            self.cell(0, 8, f"Ім’я отримувача: {order_info['name']} {order_info['surname']}", ln=1)
+            self.ln(4)
+            columns = ["Модель", "Колір", "Розмір", "У рост/шт", "Рост шт", "Ціна шт", "Знижка", "Сума"]
+            col_widths = [30, 28, 22, 24, 22, 24, 20, 20]
+            self.set_font("DejaVu", '', 11)
+            self.draw_row(columns, col_widths, height=8)
+            self.set_font("DejaVu", '', 10)
+            for row in order_rows:
+                self.draw_row([
+                    row['model'],
+                    row['color'],
+                    row['size'],
+                    row['v_rostovke'],
+                    row['qty_rostovok'],
+                    row['price'],
+                    row['discount'],
+                    row['total_sum'],
+                ], col_widths, height=8)
+
+        def order_summary(self, summary_data, qr_path="vicco_qr.jpg"):
+            self.ln(8)
+            self.set_font("DejaVu", '', 13)
+            y_start = self.get_y()
+
+            self.set_xy(20, y_start)
+            self.cell(60, 9, "Валюта замовлення:", 0, 0)
+            self.cell(40, 9, str(summary_data['currency']), 0, 1)
+
+            self.set_x(20)
+            self.cell(50, 9, "Стан оплати:", 0, 0)
+            self.cell(30, 9, str(summary_data['pay_status']), 0, 1)
+
+            self.set_x(20)
+            self.set_fill_color(200, 200, 200)
+            self.cell(35, 11, "До сплати:", 0, 0, 'L', fill=True)
+            self.set_fill_color(255, 255, 255)
+            self.cell(35, 11, str(summary_data['to_pay']), 0, 1)
+
+            y_summary = y_start
+            self.set_xy(120, y_summary)
+            self.cell(50, 9, "Сумма замовлення:", 0, 0)
+            self.cell(30, 9, str(summary_data['order_sum']), 0, 1)
+
+            self.set_x(120)
+            self.cell(38, 9, "Передплата:  ", 0, 0)
+            self.cell(32, 9, str(summary_data['prepay']), 0, 1)
+
+            self.set_x(135)
+            if os.path.exists(qr_path):
+                self.image(qr_path, x=135, y=self.get_y(), w=30, h=30)
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tf:
+        pdf = PDF(orientation='P', unit='mm', format='A4')
+        pdf.set_left_margin(10)
+        pdf.set_right_margin(10)
+        pdf.set_top_margin(10)
+        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
+        pdf.add_page()
+        pdf.company_table(order_info, order_rows)
+        pdf.order_summary(summary_data)
+        pdf.output(tf.name)
+        return tf.name
+
 # ==== Роутинг ====
 if st.session_state.page == "check":
     page_check()
@@ -679,3 +975,4 @@ elif st.session_state.page == "edit_order":
     page_edit_order()
 elif st.session_state.page == "edit_client":
     page_edit_client()
+
